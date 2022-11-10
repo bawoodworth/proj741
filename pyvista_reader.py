@@ -6,13 +6,13 @@ import glob
 import os
 import time
 import pyvistaqt
+import vtk
 from collections import OrderedDict
 from pyvistaqt import QtInteractor
 from PyQt5 import QtWidgets
 from PyQt5.uic import loadUi
 from PyQt5.QtCore import *
 
-# if orientation changes, need to maintain that view through animation sequence
 
 # global variables
 DATA_DIR = './soj_test'
@@ -75,10 +75,77 @@ class MainWindow(pyvistaqt.MainWindow):
         self.yz_button.clicked.connect(self.__yz_button)
         self.axes_button = self.findChild(QtWidgets.QRadioButton, 'axes_button')
         self.axes_button.toggled.connect(self.__axes_button)
+        self.mesh_button = self.findChild(QtWidgets.QPushButton, 'mesh_button')
+        self.mesh_button.clicked.connect(self.__mesh_button)
+        self.inspect_button = self.findChild(QtWidgets.QPushButton, 'inspect_button')
+        self.inspect_button.clicked.connect(self.__inspect_button)
         # self.time_slider = self.findChild(QtWidgets.QSlider, 'time_slider')
         # self.time_slider.sliderMoved.connect(self.__slider_update)
         
+    def __mesh_button(self):
+        if not self.show_edges:
+            self.mesh_button.setText('Hide Mesh')
+            self.show_edges = True
+            self.edge_color = 'black'
+        else:
+            self.mesh_button.setText('Show Mesh')
+            self.show_edges = False
+            self.edge_color = None
+        self.__plot_mesh( 
+            self.time_state_dict[self.current_time_idx][1]
+            )
+    
+    def __inspect_button(self):
+        if not self.inspect_data:
+            self.inspect_data = True
+            self.plotter.enable_point_picking(
+                callback=self.__inspect_point, 
+                show_message='Use left mouse button to select point',
+                use_mesh=True,
+                show_point=False,
+                pickable_window=False,
+                left_clicking=True)
+        else:
+            self.inspect_data = False
+            self.plotter.disable_picking()
+            self.__remove_points()
+        self.__plot_mesh(
+            self.time_state_dict[self.current_time_idx][1]
+            )
         
+    def __inspect_point(self, mesh, point):
+        data = mesh.point_data['T'][point]
+        label = '{:.2f}'.format(data)
+        pos = np.array(mesh.points[point])
+        point_actor = self.plotter.add_point_labels(pos, [label], show_points=False)
+        self.point_idxs.append(point)
+        self.point_actor_list.append(point_actor)
+        
+    def __update_points(self):
+        if self.point_actor_list:
+            for actor in self.point_actor_list:
+                self.plotter.remove_actor(actor)
+            self.point_actor_list = []
+            labels = []
+            positions = np.array([])
+            mesh = self.time_state_dict[self.current_time_idx][1]
+            for idx in self.point_idxs:
+                data = mesh.point_data['T'][idx]
+                labels.append('{:.2f}'.format(data))
+                positions = np.append(positions, mesh.points[idx])
+            point_actor = self.plotter.add_point_labels(
+                positions, 
+                labels, show_points=False
+                )        
+            self.point_actor_list.append(point_actor)
+            
+    def __remove_points(self):
+        if self.point_actor_list:
+            for actor in self.point_actor_list:
+                self.plotter.remove_actor(actor)
+        self.point_actor_list = []
+        self.point_idxs = []
+            
     def __setup_slider(self):
         self.time_slider.setMinimum(0)
         self.time_slider.setMaximum(len(self.time_state_dict)-1)
@@ -86,8 +153,7 @@ class MainWindow(pyvistaqt.MainWindow):
         
     def __slider_update(self):
         print('slider update...')
-        self.plotter = self.__plot_mesh(
-            self.plotter, 
+        self.__plot_mesh(
             self.time_state_dict[self.time_slider.value()][1]
             )
         self.current_time_idx = self.time_slider.value()
@@ -113,12 +179,13 @@ class MainWindow(pyvistaqt.MainWindow):
     
     def __reset_button(self):
         self.__reset_animation_button()
-        self.plotter = self.__plot_mesh(
-            self.plotter, 
-            self.time_state_dict[0][1]
-            )
         self.current_time_idx = 0
-        self.__set_time_text(self.time_state_dict[0][0])
+        self.__plot_mesh(
+            self.time_state_dict[self.current_time_idx][1]
+            )
+        self.plotter.view_vector(self.init_view_vec)
+        
+        # self.__set_time_text(self.time_state_dict[0][0])
         pass
     
     def __prev_button(self):
@@ -127,15 +194,13 @@ class MainWindow(pyvistaqt.MainWindow):
         
     def __prev(self):
         if self.current_time_idx > 0:
-            prev_idx = self.current_time_idx - 1
+            self.current_time_idx = self.current_time_idx - 1
         else:
-            prev_idx = self.final_time_idx
-        self.plotter = self.__plot_mesh(
-            self.plotter, 
-            self.time_state_dict[prev_idx][1]
+            self.current_time_idx = self.final_time_idx
+        self.__plot_mesh(
+            self.time_state_dict[self.current_time_idx][1]
             )
-        self.current_time_idx = prev_idx
-        self.__set_time_text(self.time_state_dict[prev_idx][0])
+        # self.__set_time_text(self.time_state_dict[self.current_time_idx][0])
     
     def __next_button(self):
         self.__reset_animation_button()
@@ -143,18 +208,17 @@ class MainWindow(pyvistaqt.MainWindow):
         
     def __next(self):
         if self.current_time_idx < self.final_time_idx:
-            next_idx = self.current_time_idx + 1
+            self.current_time_idx = self.current_time_idx + 1
         else:
-            next_idx = 0
-        self.plotter = self.__plot_mesh(
-            self.plotter, 
-            self.time_state_dict[next_idx][1]
+            self.current_time_idx = 0
+        self.__plot_mesh(
+            self.time_state_dict[self.current_time_idx][1]
             )
-        self.current_time_idx = next_idx
-        self.__set_time_text(self.time_state_dict[next_idx][0])
+        # self.__set_time_text(self.time_state_dict[self.current_time_idx][0])
     
     def __set_time_text(self, time_str):
-        self.text_actor.SetText(3, 'Time: {}s'.format(time_str))
+        # self.text_actor.SetText(3, 'Time: {}s'.format(time_str))
+        pass
     
     def __load_data(self):
         self.time_state_dict = OrderedDict()
@@ -176,8 +240,8 @@ class MainWindow(pyvistaqt.MainWindow):
         # plot initial mesh
         mesh = self.time_state_dict[0][1]
         self.current_time_idx = 0
-        self.plotter    = self.__plot_mesh(self.plotter, mesh)
-        self.text_actor = self.plotter.add_text('Time: 0.0s', position='upper_right')
+        self.__plot_mesh(mesh)
+        
         self.plotter.show()
 
     # def __get_mesh(self, filename):
@@ -185,7 +249,13 @@ class MainWindow(pyvistaqt.MainWindow):
     #     mesh = reader.read()
     #     return mesh
 
-    def __plot_mesh(self, plotter, mesh):
+    def __plot_mesh(self, mesh):
+        # self.plotter.clear()
+        if self.actor:
+            self.plotter.remove_actor(self.actor)
+        if self.text_actor:
+            self.plotter.remove_actor(self.text_actor)
+            
         bar_args = {
             'title': "Temperate \N{DEGREE SIGN}C",
             'height': 0.25,
@@ -197,12 +267,23 @@ class MainWindow(pyvistaqt.MainWindow):
             'n_labels':3,
             'use_opacity':True,
             }
-        self.actor = plotter.add_mesh(mesh, clim=[0,500], cmap="jet", lighting=True, scalar_bar_args=bar_args)
-        plotter.camera.view_angle = 30
+        self.actor = self.plotter.add_mesh(
+            mesh, 
+            show_edges=self.show_edges, 
+            edge_color=self.edge_color,
+            clim=[0,500], 
+            cmap="jet", 
+            lighting=True, 
+            pickable=self.inspect_data,
+            scalar_bar_args=bar_args)
+        self.text_actor = self.plotter.add_text('Time: {}s'.format(self.time_state_dict[self.current_time_idx][0]), position='upper_right')
+        self.plotter.camera.view_angle = 30
         if self.first_plot:
-            plotter.view_vector([-.3,-.5,.2])
+            self.plotter.view_vector(self.init_view_vec)
             self.first_plot = False
-        return plotter
+        if self.inspect_data:
+            self.__update_points()
+        # return plotter
     
     def __animate_button(self):
         print('animating....')
@@ -232,11 +313,22 @@ class MainWindow(pyvistaqt.MainWindow):
             
     # class members
     actor = None
+    text_actor = None
     first_plot = True
     data_files = []
     current_time_idx = -1
     final_time_idx = 0
     loading_screen = None
+    show_edges = False
+    edge_color = None
+    inspect_data = False
+    init_view_vec = [-.3, -.5, .2]
+    
+    # data labels
+    point_actor_list = []
+    point_idxs = []
+    
+    
     
     # button members
     animate_button = None
