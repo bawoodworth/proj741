@@ -79,8 +79,6 @@ class MainWindow(pyvistaqt.MainWindow):
         self.mesh_button.clicked.connect(self.__mesh_button)
         self.inspect_button = self.findChild(QtWidgets.QPushButton, 'inspect_button')
         self.inspect_button.clicked.connect(self.__inspect_button)
-        # self.time_slider = self.findChild(QtWidgets.QSlider, 'time_slider')
-        # self.time_slider.sliderMoved.connect(self.__slider_update)
         
     def __mesh_button(self):
         if not self.show_edges:
@@ -98,6 +96,7 @@ class MainWindow(pyvistaqt.MainWindow):
     def __inspect_button(self):
         if not self.inspect_data:
             self.inspect_data = True
+            self.inspect_button.setText('Deactivate Data Tool')
             self.plotter.enable_point_picking(
                 callback=self.__inspect_point, 
                 show_message='Use left mouse button to select point',
@@ -107,6 +106,7 @@ class MainWindow(pyvistaqt.MainWindow):
                 left_clicking=True)
         else:
             self.inspect_data = False
+            self.inspect_button.setText('Activate Data Tool')
             self.plotter.disable_picking()
             self.__remove_points()
         self.__plot_mesh(
@@ -145,19 +145,6 @@ class MainWindow(pyvistaqt.MainWindow):
                 self.plotter.remove_actor(actor)
         self.point_actor_list = []
         self.point_idxs = []
-            
-    def __setup_slider(self):
-        self.time_slider.setMinimum(0)
-        self.time_slider.setMaximum(len(self.time_state_dict)-1)
-        self.time_slider.setValue(0)
-        
-    def __slider_update(self):
-        print('slider update...')
-        self.__plot_mesh(
-            self.time_state_dict[self.time_slider.value()][1]
-            )
-        self.current_time_idx = self.time_slider.value()
-        self.__set_time_text(self.time_state_dict[self.current_time_idx][0])
         
     def __xy_button(self):
         self.plotter.camera_position = 'xy'
@@ -184,9 +171,6 @@ class MainWindow(pyvistaqt.MainWindow):
             self.time_state_dict[self.current_time_idx][1]
             )
         self.plotter.view_vector(self.init_view_vec)
-        
-        # self.__set_time_text(self.time_state_dict[0][0])
-        pass
     
     def __prev_button(self):
         self.__reset_animation_button()
@@ -200,7 +184,6 @@ class MainWindow(pyvistaqt.MainWindow):
         self.__plot_mesh(
             self.time_state_dict[self.current_time_idx][1]
             )
-        # self.__set_time_text(self.time_state_dict[self.current_time_idx][0])
     
     def __next_button(self):
         self.__reset_animation_button()
@@ -214,11 +197,10 @@ class MainWindow(pyvistaqt.MainWindow):
         self.__plot_mesh(
             self.time_state_dict[self.current_time_idx][1]
             )
-        # self.__set_time_text(self.time_state_dict[self.current_time_idx][0])
     
-    def __set_time_text(self, time_str):
-        # self.text_actor.SetText(3, 'Time: {}s'.format(time_str))
-        pass
+    # def __set_time_text(self, time_str):
+    #     # self.text_actor.SetText(3, 'Time: {}s'.format(time_str))
+    #     pass
     
     def __load_data(self):
         self.time_state_dict = OrderedDict()
@@ -241,49 +223,49 @@ class MainWindow(pyvistaqt.MainWindow):
         mesh = self.time_state_dict[0][1]
         self.current_time_idx = 0
         self.__plot_mesh(mesh)
-        
+        self.plotter.set_background(self.bg_color1, top=self.bg_color2)
         self.plotter.show()
 
-    # def __get_mesh(self, filename):
-    #     reader = pyvista.get_reader(filename)
-    #     mesh = reader.read()
-    #     return mesh
-
     def __plot_mesh(self, mesh):
-        # self.plotter.clear()
         if self.actor:
             self.plotter.remove_actor(self.actor)
         if self.text_actor:
             self.plotter.remove_actor(self.text_actor)
             
         bar_args = {
-            'title': "Temperate \N{DEGREE SIGN}C",
-            'height': 0.25,
-            'vertical': True,
-            'position_x': 0.05,
-            'position_y': 0.05,
-            'title_font_size':20,
-            'label_font_size':14,
+            'title': "Temperature \N{DEGREE SIGN}C",
+            # 'height': 0.25,
+            # 'vertical': False,
+            'width': 0.3,
+            'font_family':'arial',
+            # 'bold':True,
+            # 'position_x': 0.05,
+            'position_y': 0.01,
+            'fmt':'%.1f',
+            # 'title_font_size':20,
+            # 'label_font_size':14,
             'n_labels':3,
             'use_opacity':True,
             }
-        self.actor = self.plotter.add_mesh(
-            mesh, 
-            show_edges=self.show_edges, 
-            edge_color=self.edge_color,
-            clim=[0,500], 
-            cmap="jet", 
-            lighting=True, 
-            pickable=self.inspect_data,
-            scalar_bar_args=bar_args)
-        self.text_actor = self.plotter.add_text('Time: {}s'.format(self.time_state_dict[self.current_time_idx][0]), position='upper_right')
+        if self.show_cutplane:
+            self.actor = self.plotter.add_mesh_clip_plane(mesh)
+        else:
+            self.actor = self.plotter.add_mesh(
+                mesh, 
+                show_edges=self.show_edges, 
+                edge_color=self.edge_color,
+                clim=[0,500], 
+                cmap="jet", 
+                lighting=True, 
+                pickable=self.inspect_data,
+                scalar_bar_args=bar_args)
+        self.text_actor = self.plotter.add_text('Time: {}s'.format(self.time_state_dict[self.current_time_idx][0]), position='lower_right')
         self.plotter.camera.view_angle = 30
         if self.first_plot:
             self.plotter.view_vector(self.init_view_vec)
             self.first_plot = False
         if self.inspect_data:
             self.__update_points()
-        # return plotter
     
     def __animate_button(self):
         print('animating....')
@@ -309,8 +291,7 @@ class MainWindow(pyvistaqt.MainWindow):
         self.animate_button.setText('Play')
         self.animate_button.clicked.disconnect()
         self.animate_button.clicked.connect(self.__animate_button)
-    
-            
+          
     # class members
     actor = None
     text_actor = None
@@ -323,12 +304,13 @@ class MainWindow(pyvistaqt.MainWindow):
     edge_color = None
     inspect_data = False
     init_view_vec = [-.3, -.5, .2]
+    bg_color1 = [0.3, 0.3, 0.3]
+    bg_color2 = [0.8, 0.8, 0.8]
+    show_cutplane = False
     
     # data labels
     point_actor_list = []
     point_idxs = []
-    
-    
     
     # button members
     animate_button = None
@@ -339,7 +321,6 @@ class LoadWindow(QtWidgets.QDialog):
         loadUi('load_window.ui', self)
         self.show()
         
-
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
